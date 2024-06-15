@@ -1,0 +1,281 @@
+import pygame
+import sys
+import random
+
+# Initialize Pygame
+pygame.init()
+pygame.mixer.init()
+
+# Screen dimensions
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
+
+# Player settings
+PLAYER_WIDTH = 50
+PLAYER_HEIGHT = 60
+
+# Set up display
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("8-Bit Fighting Game")
+
+# Font
+font = pygame.font.SysFont(None, 36)
+
+# Load sound files
+attack_sound = pygame.mixer.Sound("attack.wav")
+hit_sound = pygame.mixer.Sound("hit.wav")
+
+# Load map images
+maps = {
+    "map1": pygame.image.load("map1.png"),
+    "map2": pygame.image.load("map2.png"),
+    "map3": pygame.image.load("map3.png")
+}
+
+# Character definitions
+class Character:
+    def __init__(self, color, speed, health, ability):
+        self.color = color
+        self.speed = speed
+        self.health = health
+        self.ability = ability
+
+    def use_ability(self, player):
+        if self.ability:
+            self.ability(player)
+
+def power_strike(player):
+    player.attack_power = 20  # Increase attack power temporarily
+
+def speed_boost(player):
+    player.speed = 10  # Increase speed temporarily
+
+def shield(player):
+    player.invincible = True  # Make invincible temporarily
+
+def heal(player):
+    player.health = min(player.health + 30, 100)  # Heal some health
+
+characters = {
+    "warrior": Character(RED, 4, 120, power_strike),
+    "ninja": Character(BLUE, 6, 80, speed_boost),
+    "knight": Character(GREEN, 3, 150, shield),
+    "mage": Character(YELLOW, 5, 100, heal)
+}
+
+# Player class
+class Player(pygame.sprite.Sprite):
+    def __init__(self, character, x, y):
+        super().__init__()
+        self.character = character
+        self.image = pygame.Surface([PLAYER_WIDTH, PLAYER_HEIGHT])
+        self.image.fill(character.color)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.health = character.health
+        self.attack = False
+        self.speed = character.speed
+        self.attack_power = 10
+        self.invincible = False
+        self.ability_cooldown = 0
+
+    def move(self, dx, dy):
+        self.rect.x += dx
+        self.rect.y += dy
+
+    def attack_action(self):
+        self.attack = True
+        attack_sound.play()
+
+    def use_ability(self):
+        if self.ability_cooldown == 0:
+            self.character.use_ability(self)
+            self.ability_cooldown = 300  # Ability cooldown period
+
+    def update(self):
+        # Reset attack state
+        self.attack = False
+        if self.ability_cooldown > 0:
+            self.ability_cooldown -= 1
+        if self.invincible and self.ability_cooldown == 0:
+            self.invincible = False
+        if self.speed > self.character.speed and self.ability_cooldown == 0:
+            self.speed = self.character.speed
+        if self.attack_power > 10 and self.ability_cooldown == 0:
+            self.attack_power = 10
+
+# CPU player AI
+def cpu_ai(player, target):
+    # Simple AI: Move towards the player and attack randomly
+    if player.rect.x < target.rect.x:
+        player.move(player.speed, 0)
+    elif player.rect.x > target.rect.x:
+        player.move(-player.speed, 0)
+    if random.randint(0, 20) == 0:  # Random attack
+        player.attack_action()
+    if random.randint(0, 100) == 0:  # Random ability use
+        player.use_ability()
+
+# Character selection
+def select_character(player_number):
+    print(f"Select character for Player {player_number}:")
+    for char_name in characters:
+        print(f"{char_name.capitalize()} - Speed: {characters[char_name].speed}, Health: {characters[char_name].health}")
+    selected_char = None
+    while selected_char not in characters:
+        selected_char = input(f"Choose character for Player {player_number} (warrior, ninja, knight, mage): ").lower()
+    return characters[selected_char]
+
+# Map selection
+def select_map():
+    print("Select map:")
+    for map_name in maps:
+        print(map_name.capitalize())
+    selected_map = None
+    while selected_map not in maps:
+        selected_map = input("Choose map (map1, map2, map3): ").lower()
+    return maps[selected_map]
+
+# Game mode selection
+game_mode = None
+while game_mode not in ('1', '2'):
+    game_mode = input("Select game mode (1: Single Player, 2: Two Players): ")
+
+# Select characters
+player1_character = select_character(1)
+player2_character = select_character(2 if game_mode == '2' else 'CPU')
+
+# Select map
+selected_map = select_map()
+
+# Create player instances
+player1 = Player(player1_character, 100, SCREEN_HEIGHT - PLAYER_HEIGHT - 10)
+player2 = Player(player2_character, SCREEN_WIDTH - PLAYER_WIDTH - 100, SCREEN_HEIGHT - PLAYER_HEIGHT - 10)
+
+# Sprite groups
+all_sprites = pygame.sprite.Group()
+all_sprites.add(player1)
+all_sprites.add(player2)
+
+# Game loop
+running = True
+clock = pygame.time.Clock()
+
+def draw_ui():
+    # Player 1 controls
+    p1_controls = [
+        "Player 1 Controls:",
+        "Move: W, A, S, D",
+        "Attack: SPACE",
+        "Ability: Q"
+    ]
+    y_offset = 10
+    for line in p1_controls:
+        text = font.render(line, True, BLACK)
+        screen.blit(text, (10, y_offset))
+        y_offset += 30
+
+    # Player 2 controls
+    p2_controls = [
+        "Player 2 Controls:",
+        "Move: Arrow Keys",
+        "Attack: RSHIFT",
+        "Ability: RCTRL"
+    ]
+    y_offset = 10
+    for line in p2_controls:
+        text = font.render(line, True, BLACK)
+        screen.blit(text, (SCREEN_WIDTH - 250, y_offset))
+        y_offset += 30
+
+    # Draw health bars
+    pygame.draw.rect(screen, RED, (10, SCREEN_HEIGHT - 40, player1.health * 2, 30))
+    pygame.draw.rect(screen, BLUE, (SCREEN_WIDTH - 210, SCREEN_HEIGHT - 40, player2.health * 2, 30))
+    health_text1 = font.render(f"P1 Health: {player1.health}", True, BLACK)
+    health_text2 = font.render(f"P2 Health: {player2.health}", True, BLACK)
+    screen.blit(health_text1, (10, SCREEN_HEIGHT - 70))
+    screen.blit(health_text2, (SCREEN_WIDTH - 210, SCREEN_HEIGHT - 70))
+
+def show_winner(winner):
+    winner_text = font.render(f"Player {winner} wins!", True, BLACK)
+    screen.blit(winner_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
+
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # Touch controls for player 1 (assuming left half of screen for movement, right half for buttons)
+            if event.pos[0] < SCREEN_WIDTH // 2:
+                if event.pos[1] < SCREEN_HEIGHT // 2:
+                    player1.move(0, -player1.speed)  # Up
+                elif event.pos[1] > SCREEN_HEIGHT // 2 + PLAYER_HEIGHT:
+                    player1.move(0, player1.speed)  # Down
+                elif event.pos[0] < SCREEN_WIDTH // 4:
+                    player1.move(-player1.speed, 0)  # Left
+                else:
+                    player1.move(player1.speed, 0)  # Right
+            else:
+                if event.pos[1] < SCREEN_HEIGHT // 2:
+                    player1.attack_action()  # Attack
+                else:
+                    player1.use_ability()  # Ability
+
+            # Touch controls for player 2 (assuming left half of screen for movement, right half for buttons)
+            if event.pos[0] > SCREEN_WIDTH // 2:
+                if event.pos[1] < SCREEN_HEIGHT // 2:
+                    player2.move(0, -player2.speed)  # Up
+                elif event.pos[1] > SCREEN_HEIGHT // 2 + PLAYER_HEIGHT:
+                    player2.move(0, player2.speed)  # Down
+                elif event.pos[0] < 3 * SCREEN_WIDTH // 4:
+                    player2.move(-player2.speed, 0)  # Left
+                else:
+                    player2.move(player2.speed, 0)  # Right
+            else:
+                if event.pos[1] < SCREEN_HEIGHT // 2:
+                    player2.attack_action()  # Attack
+                else:
+                    player2.use_ability()  # Ability
+
+    # Update sprites
+    all_sprites.update()
+
+    # Check for attacks
+    if player1.attack and player1.rect.colliderect(player2.rect):
+        player2.health -= player1.attack_power
+        hit_sound.play()
+        print(f"Player 2 Health: {player2.health}")
+        if player2.health <= 0:
+            show_winner(1)
+            running = False
+
+    if player2.attack and player2.rect.colliderect(player1.rect):
+        player1.health -= player2.attack_power
+        hit_sound.play()
+        print(f"Player 1 Health: {player1.health}")
+        if player1.health <= 0:
+            show_winner(2)
+            running = False
+
+    # Draw everything
+    screen.fill(WHITE)
+    screen.blit(selected_map, (0, 0))
+    all_sprites.draw(screen)
+    draw_ui()
+    pygame.display.flip()
+
+    # Cap the frame rate
+    clock.tick(60)
+
+# Quit Pygame
+pygame.quit()
+sys.exit()
