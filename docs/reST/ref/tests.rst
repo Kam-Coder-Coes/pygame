@@ -1,113 +1,283 @@
-.. include:: common.txt
+import pygame
+import sys
+import random
 
-:mod:`pygame.tests`
-===================
+# Initialize Pygame
+pygame.init()
+pygame.mixer.init()
 
-.. module:: pygame.tests
-   :synopsis: Pygame unit test suite package
+# Screen dimensions
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
 
-| :sl:`Pygame unit test suite package`
+# Colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
 
-A quick way to run the test suite package from the command line is to import
-the go submodule with the Python -m option:
+# Player settings
+PLAYER_WIDTH = 50
+PLAYER_HEIGHT = 60
 
-::
+# Set up display
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("8-Bit Fighting Game")
 
-  python -m pygame.tests [<test options>]
+# Font
+font = pygame.font.SysFont(None, 36)
 
-Command line option --help displays a usage message. Available options
-correspond to the :func:`pygame.tests.run` arguments.
+# Load sound files
+attack_sound = pygame.mixer.Sound("attack.wav")
+hit_sound = pygame.mixer.Sound("hit.wav")
 
-The xxxx_test submodules of the tests package are unit test suites for
-individual parts of pygame. Each can also be run as a main program. This is
-useful if the test, such as cdrom_test, is interactive.
+# Load map images
+maps = {
+    "map1": pygame.image.load("map1.png"),
+    "map2": pygame.image.load("map2.png"),
+    "map3": pygame.image.load("map3.png")
+}
 
-For pygame development the test suite can be run from a pygame distribution
-root directory. Program ``run_tests.py`` is provided for convenience, though
-test/go.py can be run directly.
+# Character definitions
+class Character:
+    def __init__(self, color, speed, health, ability):
+        self.color = color
+        self.speed = speed
+        self.health = health
+        self.ability = ability
 
-Module level tags control which modules are included in a unit test run. Tags
-are assigned to a unit test module with a corresponding <name>_tags.py module.
-The tags module has the global __tags__, a list of tag names. For example,
-``cdrom_test.py`` has a tag file ``cdrom_tags.py`` containing a tags list that
-has the 'interactive' string. The 'interactive' tag indicates ``cdrom_test.py``
-expects user input. It is excluded from a ``run_tests.py`` or
-``pygame.tests.go`` run. 
+    def use_ability(self, player):
+        if self.ability:
+            self.ability(player)
 
-Two other tags that are excluded are 'ignore' and 'subprocess_ignore'. These
-two tags indicate unit tests that will not run on a particular platform, or
-for which no corresponding pygame module is available.
+def power_strike(player):
+    player.attack_power = 20  # Increase attack power temporarily
 
-The test runner will list each excluded module along with the tag responsible.
+def speed_boost(player):
+    player.speed = 10  # Increase speed temporarily
 
-.. function:: run
+def shield(player):
+    player.invincible = True  # Make invincible temporarily
 
-   | :sl:`Run the pygame unit test suite`
-   | :sg:`run(*args, **kwds) -> tuple`
+def heal(player):
+    player.health = min(player.health + 30, 100)  # Heal some health
 
-   Positional arguments (optional):
+characters = {
+    "warrior": Character(RED, 4, 120, power_strike),
+    "ninja": Character(BLUE, 6, 80, speed_boost),
+    "knight": Character(GREEN, 3, 150, shield),
+    "mage": Character(YELLOW, 5, 100, heal)
+}
 
-   ::
+# Player class
+class Player(pygame.sprite.Sprite):
+    def __init__(self, character, x, y):
+        super().__init__()
+        self.character = character
+        self.image = pygame.Surface([PLAYER_WIDTH, PLAYER_HEIGHT])
+        self.image.fill(character.color)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.health = character.health
+        self.attack = False
+        self.speed = character.speed
+        self.attack_power = 10
+        self.invincible = False
+        self.ability_cooldown = 0
 
-       The names of tests to include. If omitted then all tests are run. Test names
-       need not include the trailing '_test'.
+    def move(self, dx, dy):
+        self.rect.x += dx
+        self.rect.y += dy
 
-   Keyword arguments:
+    def attack_action(self):
+        self.attack = True
+        attack_sound.play()
 
-   ::
+    def use_ability(self):
+        if self.ability_cooldown == 0:
+            self.character.use_ability(self)
+            self.ability_cooldown = 300  # Ability cooldown period
 
-       incomplete - fail incomplete tests (default False)
-       nosubprocess - run all test suites in the current process
-                      (default False, use separate subprocesses)
-       dump - dump failures/errors as dict ready to eval (default False)
-       file - if provided, the name of a file into which to dump failures/errors
-       timings - if provided, the number of times to run each individual test to
-                 get an average run time (default is run each test once)
-       exclude - A list of TAG names to exclude from the run
-       show_output - show silenced stderr/stdout on errors (default False)
-       all - dump all results, not just errors (default False)
-       randomize - randomize order of tests (default False)
-       seed - if provided, a seed randomizer integer
-       multi_thread - if provided, the number of THREADS in which to run
-                      subprocessed tests
-       time_out - if subprocess is True then the time limit in seconds before
-                  killing a test (default 30)
-       fake - if provided, the name of the fake tests package in the
-              run_tests__tests subpackage to run instead of the normal
-              pygame tests
-       python - the path to a python executable to run subprocessed tests
-                (default sys.executable)
+    def update(self):
+        # Reset attack state
+        self.attack = False
+        if self.ability_cooldown > 0:
+            self.ability_cooldown -= 1
+        if self.invincible and self.ability_cooldown == 0:
+            self.invincible = False
+        if self.speed > self.character.speed and self.ability_cooldown == 0:
+            self.speed = self.character.speed
+        if self.attack_power > 10 and self.ability_cooldown == 0:
+            self.attack_power = 10
 
-   Return value:
+# CPU player AI
+def cpu_ai(player, target):
+    # Simple AI: Move towards the player and attack randomly
+    if player.rect.x < target.rect.x:
+        player.move(player.speed, 0)
+    elif player.rect.x > target.rect.x:
+        player.move(-player.speed, 0)
+    if random.randint(0, 20) == 0:  # Random attack
+        player.attack_action()
+    if random.randint(0, 100) == 0:  # Random ability use
+        player.use_ability()
 
-   ::
+# Character selection
+def select_character(player_number):
+    print(f"Select character for Player {player_number}:")
+    for char_name in characters:
+        print(f"{char_name.capitalize()} - Speed: {characters[char_name].speed}, Health: {characters[char_name].health}")
+    selected_char = None
+    while selected_char not in characters:
+        selected_char = input(f"Choose character for Player {player_number} (warrior, ninja, knight, mage): ").lower()
+    return characters[selected_char]
 
-       A tuple of total number of tests run, dictionary of error information.
-       The dictionary is empty if no errors were recorded.
+# Map selection
+def select_map():
+    print("Select map:")
+    for map_name in maps:
+        print(map_name.capitalize())
+    selected_map = None
+    while selected_map not in maps:
+        selected_map = input("Choose map (map1, map2, map3): ").lower()
+    return maps[selected_map]
 
-   By default individual test modules are run in separate subprocesses. This
-   recreates normal pygame usage where ``pygame.init()`` and ``pygame.quit()``
-   are called only once per program execution, and avoids unfortunate
-   interactions between test modules. 
-   
-   A time limit is placed on test execution ensuring that any frozen tests
-   processes are killed when their time allotment is expired. Use the single
-   process option if threading is not working properly or if tests are taking
-   too long. It is not guaranteed that all tests will pass in single process
-   mode.
+# Game mode selection
+game_mode = None
+while game_mode not in ('1', '2'):
+    game_mode = input("Select game mode (1: Single Player, 2: Two Players): ")
 
-   Tests are run in a randomized order if the randomize argument is True or a
-   seed argument is provided. If no seed integer is provided then the system
-   time is used for the randomization seed value.
+# Select characters
+player1_character = select_character(1)
+player2_character = select_character(2 if game_mode == '2' else 'CPU')
 
-   Individual test modules may have a __tags__ attribute, a list of tag strings
-   used to selectively omit modules from a run. By default only 'interactive'
-   modules such as cdrom_test are ignored. An interactive module must be run
-   from the console as a Python program.
+# Select map
+selected_map = select_map()
 
-   This function can only be called once per Python session. It is not
-   reentrant.
+# Create player instances
+player1 = Player(player1_character, 100, SCREEN_HEIGHT - PLAYER_HEIGHT - 10)
+player2 = Player(player2_character, SCREEN_WIDTH - PLAYER_WIDTH - 100, SCREEN_HEIGHT - PLAYER_HEIGHT - 10)
 
-   .. ## pygame.tests.run ##
+# Sprite groups
+all_sprites = pygame.sprite.Group()
+all_sprites.add(player1)
+all_sprites.add(player2)
 
-.. ## pygame.tests ##
+# Game loop
+running = True
+clock = pygame.time.Clock()
+
+def draw_ui():
+    # Player 1 controls
+    p1_controls = [
+        "Player 1 Controls:",
+        "Move: W, A, S, D",
+        "Attack: SPACE",
+        "Ability: Q"
+    ]
+    y_offset = 10
+    for line in p1_controls:
+        text = font.render(line, True, BLACK)
+        screen.blit(text, (10, y_offset))
+        y_offset += 30
+
+    # Player 2 controls
+    p2_controls = [
+        "Player 2 Controls:",
+        "Move: Arrow Keys",
+        "Attack: RSHIFT",
+        "Ability: RCTRL"
+    ]
+    y_offset = 10
+    for line in p2_controls:
+        text = font.render(line, True, BLACK)
+        screen.blit(text, (SCREEN_WIDTH - 250, y_offset))
+        y_offset += 30
+
+    # Draw health bars
+    pygame.draw.rect(screen, RED, (10, SCREEN_HEIGHT - 40, player1.health * 2, 30))
+    pygame.draw.rect(screen, BLUE, (SCREEN_WIDTH - 210, SCREEN_HEIGHT - 40, player2.health * 2, 30))
+    health_text1 = font.render(f"P1 Health: {player1.health}", True, BLACK)
+    health_text2 = font.render(f"P2 Health: {player2.health}", True, BLACK)
+    screen.blit(health_text1, (10, SCREEN_HEIGHT - 70))
+    screen.blit(health_text2, (SCREEN_WIDTH - 210, SCREEN_HEIGHT - 70))
+
+def show_winner(winner):
+    winner_text = font.render(f"Player {winner} wins!", True, BLACK)
+    screen.blit(winner_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
+
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    # Player controls
+    keys = pygame.key.get_pressed()
+
+    # Player 1 controls (WASD)
+    if keys[pygame.K_a]:
+        player1.move(-player1.speed, 0)
+    if keys[pygame.K_d]:
+        player1.move(player1.speed, 0)
+    if keys[pygame.K_w]:
+        player1.move(0, -player1.speed)
+    if keys[pygame.K_s]:
+        player1.move(0, player1.speed)
+    if keys[pygame.K_SPACE]:
+        player1.attack_action()
+    if keys[pygame.K_q]:
+        player1.use_ability()
+
+    if game_mode == '2':  # Two-player mode
+        # Player 2 controls (Arrow keys)
+        if keys[pygame.K_LEFT]:
+            player2.move(-player2.speed, 0)
+        if keys[pygame.K_RIGHT]:
+            player2.move(player2.speed, 0)
+        if keys[pygame.K_UP]:
+            player2.move(0, -player2.speed)
+        if keys[pygame.K_DOWN]:
+            player2.move(0, player2.speed)
+        if keys[pygame.K_RSHIFT]:
+            player2.attack_action()
+        if keys[pygame.K_RCTRL]:
+            player2.use_ability()
+    else:  # Single-player mode with CPU
+        cpu_ai(player2, player1)
+
+    # Update sprites
+    all_sprites.update()
+
+    # Check for attacks
+    if player1.attack and player1.rect.colliderect(player2.rect):
+        player2.health -= player1.attack_power
+        hit_sound.play()
+        print(f"Player 2 Health: {player2.health}")
+        if player2.health <= 0:
+            show_winner(1)
+            running = False
+
+    if player2.attack and player2.rect.colliderect(player1.rect):
+        player1.health -= player2.attack_power
+        hit_sound.play()
+        print(f"Player 1 Health: {player1.health}")
+        if player1.health <= 0:
+            show_winner(2)
+            running = False
+
+    # Draw everything
+    screen.fill(WHITE)
+    screen.blit(selected_map, (0, 0))
+    all_sprites.draw(screen)
+    draw_ui()
+    pygame.display.flip()
+
+    # Cap the frame rate
+    clock.tick(60)
+
+# Quit Pygame
+pygame.quit()
+sys.exit()
